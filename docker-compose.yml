@@ -1,0 +1,41 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "Password123!"
+      MSSQL_PID: "Developer"
+    ports: ["1433:1433"]
+    healthcheck:
+      test: ["CMD","/opt/mssql-tools/bin/sqlcmd","-S","localhost","-U","sa","-P","Password123!","-Q","SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - ./db:/scripts:ro
+
+
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./db:/scripts:ro
+    entrypoint: ["bash","-lc","/opt/mssql-tools/bin/sqlcmd -S db -U sa -P 'Password123!' -i /scripts/01_schema.sql"]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:sqlserver://db:1433;databaseName=chn_exam;encrypt=false;TrustServerCertificate=true
+      SPRING_DATASOURCE_USERNAME: chn
+      SPRING_DATASOURCE_PASSWORD: Password123!
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+    ports: ["8080:8080"]
